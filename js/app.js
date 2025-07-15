@@ -6,6 +6,8 @@ let users = JSON.parse(localStorage.getItem("users")) || [
   { username: "admin", password: "couturejadmin123", role: "admin" },
   { username: "user", password: "user757", role: "user" },
 ];
+let barcodeInput = "";
+let lastScanTime = 0;
 const currency = "₦";
 let currentUser = null;
 
@@ -30,6 +32,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Set up event listeners
   modalAddProductBtn.addEventListener("click", addProduct);
+  document.getElementById("importCSVBtn").addEventListener("click", importCSV);
+  document.getElementById("exportCSVBtn").addEventListener("click", exportCSV);
+  document.addEventListener("DOMContentLoaded", function () {
+    document.addEventListener("keydown", handleBarcodeScan);
+  });
 });
 
 // Login function
@@ -98,11 +105,13 @@ function updateUIForUserRole() {
     inventoryActionsHeader.style.display = "table-cell";
     historyActionsHeader.style.display = "table-cell";
     adminTab.style.display = "block";
+    document.getElementById("importExportActions").style.display = "block";
   } else {
     addProductBtn.style.display = "none";
     inventoryActionsHeader.style.display = "none";
     historyActionsHeader.style.display = "none";
     adminTab.style.display = "none";
+    document.getElementById("importExportActions").style.display = "none";
   }
 }
 
@@ -235,7 +244,7 @@ function deleteProduct(index) {
   }
 }
 
-// Update Inventory Table
+// Update Inventory Table with Low Stock Alerts
 function updateInventoryTable() {
   const tbody = document.querySelector("#inventoryTable tbody");
   tbody.innerHTML = "";
@@ -249,6 +258,9 @@ function updateInventoryTable() {
 
   inventory.forEach((item, index) => {
     const row = document.createElement("tr");
+    if (item.quantity < 5) {
+      row.classList.add("low-stock");
+    }
     row.innerHTML = `
           <td>${item.name}</td>
           <td>${item.sku}</td>
@@ -262,7 +274,7 @@ function updateInventoryTable() {
               <div class="barcode-actions">
                 <button class="btn btn-sm btn-outline-primary" onclick="showBarcodeModal('${
                   item.sku
-                }', '${item.name}')">
+                }', '${item.name}', ${item.price})">
                   Print Barcode
                 </button>
               </div>
@@ -287,8 +299,8 @@ function updateInventoryTable() {
         `;
     tbody.appendChild(row);
 
-    // Generate barcode
-    JsBarcode(`#barcode-${index}`, item.sku, {
+    // Generate barcode with SKU and price
+    JsBarcode(`#barcode-${index}`, `${item.sku}|${item.price}`, {
       format: "CODE128",
       height: 40,
       displayValue: true,
@@ -298,16 +310,16 @@ function updateInventoryTable() {
   });
 }
 
-// Barcode functions
-function showBarcodeModal(sku, name) {
+// Barcode functions (updated to show price)
+function showBarcodeModal(sku, name, price) {
   const modalContent = document.getElementById("barcodePrintContent");
   modalContent.innerHTML = `
         <div class="text-center mb-3">
           <h5>${name}</h5>
-          <p>SKU: ${sku}</p>
+          <p>SKU: ${sku} | Price: ${currency}${price.toFixed(2)}</p>
         </div>
         <div class="text-center">
-          <canvas id="printBarcodeCanvas" data-barcode="${sku}"></canvas>
+          <canvas id="printBarcodeCanvas" data-barcode="${sku}|${price}"></canvas>
         </div>
       `;
 
@@ -319,7 +331,7 @@ function showBarcodeModal(sku, name) {
 
   // Generate barcode after modal is shown
   setTimeout(() => {
-    JsBarcode("#printBarcodeCanvas", sku, {
+    JsBarcode("#printBarcodeCanvas", `${sku}|${price}`, {
       format: "CODE128",
       height: 60,
       displayValue: true,
@@ -329,43 +341,117 @@ function showBarcodeModal(sku, name) {
   }, 100);
 }
 
-function printBarcode() {
-  const printWindow = window.open("", "", "width=600,height=600");
-  const sku = document
-    .querySelector("#printBarcodeCanvas")
-    .getAttribute("data-barcode");
-  const name = document.querySelector("#barcodePrintContent h5").textContent;
+// CSV Import/Export Functions
+function importCSV() {
+  const fileInput = document.getElementById("csvFileInput");
+  const file = fileInput.files[0];
 
-  printWindow.document.write(`
-        <html>
-          <head>
-            <title>Print Barcode</title>
-            <style>
-              body { text-align: center; padding: 20px; font-family: Arial; }
-              canvas { max-width: 100%; margin: 20px 0; }
-            </style>
-          </head>
-          <body>
-            <h3>${name}</h3>
-            <p>SKU: ${sku}</p>
-            <canvas id="printBarcodeCanvas"></canvas>
-            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
-            <script>
-              window.onload = function() {
-                JsBarcode('#printBarcodeCanvas', '${sku}', { 
-                  format: "CODE128", 
-                  height: 60, 
-                  displayValue: true,
-                  lineColor: "#000000",
-                  width: 2
-                });
-                setTimeout(function() { window.print(); }, 200);
-              }
-            <\/script>
-          </body>
-        </html>
-      `);
-  printWindow.document.close();
+  if (!file) {
+    alert("Please select a CSV file first");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const contents = e.target.result;
+    const lines = contents.split("\n");
+    const headers = lines[0].split(",").map((h) => h.trim());
+
+    // Validate CSV structure
+    if (
+      !headers.includes("name") ||
+      !headers.includes("sku") ||
+      !headers.includes("price") ||
+      !headers.includes("quantity")
+    ) {
+      alert("Invalid CSV format. Required columns: name, sku, price, quantity");
+      return;
+    }
+
+    const newInventory = [];
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+
+      const values = lines[i].split(",");
+      const item = {
+        name: values[headers.indexOf("name")].trim(),
+        sku: values[headers.indexOf("sku")].trim(),
+        price: parseFloat(values[headers.indexOf("price")]),
+        quantity: parseInt(values[headers.indexOf("quantity")]),
+        size: headers.includes("size")
+          ? values[headers.indexOf("size")].trim()
+          : "",
+        color: headers.includes("color")
+          ? values[headers.indexOf("color")].trim()
+          : "",
+      };
+
+      // Validate item
+      if (
+        !item.name ||
+        !item.sku ||
+        isNaN(item.price) ||
+        isNaN(item.quantity)
+      ) {
+        alert(`Skipping invalid row ${i + 1}: ${lines[i]}`);
+        continue;
+      }
+
+      newInventory.push(item);
+    }
+
+    // Merge with existing inventory (skip duplicates)
+    const existingSKUs = inventory.map((item) => item.sku);
+    const uniqueNewItems = newInventory.filter(
+      (item) => !existingSKUs.includes(item.sku)
+    );
+
+    if (uniqueNewItems.length === 0) {
+      alert("No new products to import (all SKUs already exist)");
+      return;
+    }
+
+    inventory = [...inventory, ...uniqueNewItems];
+    localStorage.setItem("inventory", JSON.stringify(inventory));
+    updateInventoryTable();
+    updateProductSelect();
+    alert(`Successfully imported ${uniqueNewItems.length} products!`);
+
+    // Reset file input
+    fileInput.value = "";
+  };
+  reader.readAsText(file);
+}
+
+function exportCSV() {
+  if (inventory.length === 0) {
+    alert("No products to export");
+    return;
+  }
+
+  const headers = ["name", "sku", "price", "quantity", "size", "color"];
+  const csvRows = [
+    headers.join(","), // Header row
+    ...inventory.map((item) =>
+      headers
+        .map((header) =>
+          header === "price" || header === "quantity"
+            ? item[header]
+            : `"${item[header] || ""}"`
+        )
+        .join(",")
+    ),
+  ];
+
+  const csvContent = csvRows.join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `inventory_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 // POS functions
@@ -699,5 +785,71 @@ function clearModalInputs() {
   document.getElementById("productQuantity").value = "";
 }
 
-// Check login status on page load
+function handleBarcodeScan(event) {
+  const now = new Date().getTime();
+  const timeBetweenKeys = now - lastScanTime;
+
+  // If keys come in very fast (less than 50ms apart), assume it's a barcode scanner
+  if (timeBetweenKeys < 50) {
+    barcodeInput += event.key;
+  } else {
+    barcodeInput = event.key; // Start new barcode
+  }
+
+  lastScanTime = now;
+
+  // If Enter key is pressed (scanners usually send an Enter at the end)
+  if (event.key === "Enter" && barcodeInput.length > 1) {
+    processScannedBarcode(barcodeInput);
+    barcodeInput = ""; // Reset for next scan
+    event.preventDefault(); // Prevent form submission if scanning in a form
+  }
+}
+
+function processScannedBarcode(barcode) {
+  // Remove the Enter key if present
+  barcode = barcode.replace(/\r?\n|\r/g, "");
+
+  // Split the barcode into SKU and price
+  const [sku, price] = barcode.split("|");
+
+  // Find the product in inventory
+  const product = inventory.find((item) => item.sku === sku);
+
+  if (product) {
+    // Add to cart with quantity 1 (or prompt for quantity)
+    const existingItem = cart.find((item) => item.sku === sku);
+
+    if (existingItem) {
+      existingItem.saleQuantity += 1;
+    } else {
+      cart.push({
+        ...product,
+        saleQuantity: 1,
+      });
+    }
+
+    // Update the display
+    updateSaleTable();
+  } else {
+    alert(`Product with SKU ${sku} not found!`);
+  }
+}
+
+// Add this CSS for low stock alerts
+const style = document.createElement("style");
+style.textContent = `
+  .low-stock {
+    background-color: #fff3cd !important;
+    animation: pulseWarning 1.5s infinite;
+  }
+  @keyframes pulseWarning {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+  }
+`;
+document.head.appendChild(style);
+
+// Initialize on load
 checkLogin();

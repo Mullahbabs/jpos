@@ -23,7 +23,7 @@
   <body>
     <!-- Login Section -->
     <div id="loginSection" class="login-container">
-      <h2 class="login-title" style="color: #4e73df">Janto's Couture</h2>
+      <h2 class="login-title" style="color: #4e73df">JCPOS</h2>
       <p style="text-align: center">Welcome</p>
       <div class="mb-3">
         <label for="username" class="form-label">Username</label>
@@ -52,7 +52,7 @@
     <!-- Main System Content (hidden until login) -->
     <div id="systemContent" class="container system-content">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="mb-0" style="color: #4e73df">Janto's Couture P.O.S</h1>
+        <h1 class="mb-0" style="color: #4e73df">JC P.O.S</h1>
         <div>
           <span id="currentUser" class="me-3"></span>
           <button class="btn btn-sm btn-outline-danger" onclick="logout()">
@@ -153,6 +153,27 @@
               <tbody></tbody>
             </table>
           </div>
+        </div>
+
+        <div
+          id="importExportActions"
+          style="display: none; margin-bottom: 20px"
+        >
+          <input
+            type="file"
+            id="csvFileInput"
+            accept=".csv"
+            style="display: none"
+          />
+          <button
+            onclick="document.getElementById('csvFileInput').click()"
+            class="btn btn-primary"
+          >
+            Import CSV
+          </button>
+          <button onclick="exportCSV()" class="btn btn-secondary">
+            Export CSV
+          </button>
         </div>
 
         <div class="tab-pane fade" id="pos" role="tabpanel">
@@ -564,7 +585,7 @@
               class="receipt-logo me-3"
             />
             <div>
-              <h2>Janto's Couture</h2>
+              <h2 class="text-primary">Janto's Couture</h2>
               <p>123 Azikiwe Address, Abuja</p>
               <p>Phone: (123) 456-7890</p>
             </div>
