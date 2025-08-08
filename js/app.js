@@ -341,6 +341,46 @@ function showBarcodeModal(sku, name, price) {
   }, 100);
 }
 
+function printBarcode() {
+  const printWindow = window.open("", "", "width=600,height=600");
+  const sku = document
+    .querySelector("#printBarcodeCanvas")
+    .getAttribute("data-barcode");
+  const name = document.querySelector("#barcodePrintContent h5").textContent;
+
+  printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Barcode</title>
+            <style>
+              body { text-align: center; padding: 20px; font-family: Arial; }
+              canvas { max-width: 100%; margin: 20px 0; }
+            </style>
+          </head>
+          <body>
+            <h3>${name}</h3>
+            <p>SKU: ${sku}</p>
+            <canvas id="printBarcodeCanvas"></canvas>
+            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+            <script>
+              window.onload = function() {
+                JsBarcode('#printBarcodeCanvas', '${sku}', { 
+                  format: "CODE128", 
+                  height: 60, 
+                  displayValue: true,
+                  lineColor: "#000000",
+                  width: 2
+                });
+                setTimeout(function() { window.print(); }, 200);
+              }
+            <\/script>
+          </body>
+        </html>
+      `);
+  printWindow.document.close();
+}
+
+
 // CSV Import/Export Functions
 function importCSV() {
   const fileInput = document.getElementById("csvFileInput");
